@@ -54,6 +54,25 @@ app.get('/api/roadmaps', (req, res) => {
   res.json(store.getAllRoadmaps());
 });
 
+app.post('/api/roadmaps/import', (req, res) => {
+  try {
+    const result = store.importRoadmaps(req.body);
+    res.json({ success: true, roadmaps: result });
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message || 'Failed to import JSON' });
+  }
+});
+
+app.post('/api/roadmaps/clear', (req, res) => {
+  store.clearAll();
+  res.json({ success: true });
+});
+
+app.post('/api/roadmaps/template', (req, res) => {
+  store.loadTemplate();
+  res.json({ success: true, roadmaps: store.getAllRoadmaps() });
+});
+
 app.get('/api/roadmaps/:id', (req, res) => {
   const rm = store.getRoadmapById(req.params.id);
   if (!rm) return res.status(404).json({ error: 'Roadmap not found' });

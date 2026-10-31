@@ -45,12 +45,12 @@ class Store {
         const content = fs.readFileSync(DATA_FILE, 'utf-8');
         this.roadmaps = JSON.parse(content);
       } else {
-        this.roadmaps = JSON.parse(JSON.stringify(INITIAL_ROADMAPS));
+        this.roadmaps = [];
         this.save();
       }
     } catch (err) {
-      console.warn('Failed to load roadmaps from disk, falling back to defaults:', err);
-      this.roadmaps = JSON.parse(JSON.stringify(INITIAL_ROADMAPS));
+      console.warn('Failed to load roadmaps from disk, starting empty:', err);
+      this.roadmaps = [];
     }
   }
 
@@ -63,6 +63,33 @@ class Store {
     } catch (err) {
       console.error('Failed to save roadmaps to disk:', err);
     }
+  }
+
+  public clearAll(): void {
+    this.roadmaps = [];
+    this.save();
+    broadcast('roadmaps_cleared', {});
+  }
+
+  public loadTemplate(): void {
+    this.roadmaps = JSON.parse(JSON.stringify(INITIAL_ROADMAPS));
+    this.save();
+    broadcast('template_loaded', this.roadmaps);
+  }
+
+  public importRoadmaps(imported: Roadmap | Roadmap[]): Roadmap[] {
+    const list = Array.isArray(imported) ? imported : [imported];
+    for (const item of list) {
+      const idx = this.roadmaps.findIndex(r => r.id === item.id);
+      if (idx !== -1) {
+        this.roadmaps[idx] = item;
+      } else {
+        this.roadmaps.push(item);
+      }
+    }
+    this.save();
+    broadcast('roadmaps_imported', this.roadmaps);
+    return this.roadmaps;
   }
 
   public getAllRoadmaps(): Roadmap[] {

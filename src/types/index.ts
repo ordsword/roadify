@@ -1,6 +1,14 @@
 export type StageStatus = 'done' | 'in_progress' | 'planned' | 'paused';
 export type PriorityLevel = 'critical' | 'high' | 'medium' | 'low' | 'normal';
 
+export interface UserProfile {
+  id: string;
+  name: string;
+  email: string;
+  avatarColor: string;
+  createdAt: string;
+}
+
 export interface TaskItem {
   id: string;
   title: string;
@@ -50,6 +58,7 @@ export interface CanvasState {
 
 export interface Roadmap {
   id: string;
+  userId?: string;
   title: string;
   description: string;
   author: string;

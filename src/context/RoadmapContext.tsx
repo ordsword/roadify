@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import confetti from 'canvas-confetti';
 import { Roadmap, StageNode, ConnectionLink, CanvasTool, FilterTab, PriorityLevel } from '../types';
 import { INITIAL_ROADMAPS } from '../presets/initialData';
+import { useAuth } from './AuthContext';
 
 interface RoadmapContextType {
   roadmaps: Roadmap[];
@@ -15,7 +16,7 @@ interface RoadmapContextType {
   isConnecting: boolean;
   connectingFromId: string | null;
   wsConnected: boolean;
-  
+
   // Actions
   setActiveRoadmapId: (id: string) => void;
   setActiveStageId: (id: string | null) => void;
@@ -28,7 +29,7 @@ interface RoadmapContextType {
   resetZoom: () => void;
   fitToScreen: () => void;
   focusStage: (stageId: string) => void;
-  
+
   // Data mutations
   createRoadmap: (title: string, description?: string) => Promise<Roadmap | null>;
   deleteRoadmap: (id: string) => Promise<boolean>;
@@ -46,25 +47,36 @@ interface RoadmapContextType {
   cancelConnecting: () => void;
   completeConnecting: (toStageId: string) => void;
   importRoadmapJSON: (jsonString: string) => boolean;
+  importRoadmapFile: (file: File) => Promise<boolean>;
+  loadSampleTemplate: () => void;
 }
 
 const RoadmapContext = createContext<RoadmapContextType | undefined>(undefined);
 
 export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { currentUser } = useAuth();
+
+  // Load from local storage, start clean/empty if first time
   const [roadmaps, setRoadmaps] = useState<Roadmap[]>(() => {
-    const saved = localStorage.getItem('roadify_roadmaps');
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
-    }
-    return INITIAL_ROADMAPS;
+    try {
+      const saved = localStorage.getItem('roadify_roadmaps');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return []; // Clean empty slate!
   });
 
-  const [activeRoadmapId, setActiveRoadmapId] = useState<string>('egg-incubator');
+  const [activeRoadmapId, setActiveRoadmapId] = useState<string>(() => {
+    return localStorage.getItem('roadify_active_id') || '';
+  });
+
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
   const [filterTab, setFilterTab] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [activeTool, setActiveTool] = useState<CanvasTool>('select');
-  
+
   const [canvasState, setCanvasState] = useState<{ panX: number; panY: number; zoom: number }>({
     panX: 180,
     panY: 80,
@@ -75,25 +87,37 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [wsConnected, setWsConnected] = useState<boolean>(false);
   const wsRef = useRef<WebSocket | null>(null);
 
+  // Active roadmap lookup
   const activeRoadmap = roadmaps.find((r) => r.id === activeRoadmapId) || roadmaps[0];
+
+  // Keep active ID valid
+  useEffect(() => {
+    if (activeRoadmap && activeRoadmap.id !== activeRoadmapId) {
+      setActiveRoadmapId(activeRoadmap.id);
+    }
+  }, [activeRoadmap, activeRoadmapId]);
 
   // Persist locally
   useEffect(() => {
     localStorage.setItem('roadify_roadmaps', JSON.stringify(roadmaps));
-  }, [roadmaps]);
+    if (activeRoadmapId) {
+      localStorage.setItem('roadify_active_id', activeRoadmapId);
+    }
+  }, [roadmaps, activeRoadmapId]);
 
-  // Initial fetch from backend if available
+  // Fetch from local server on mount
   const fetchFromServer = useCallback(async () => {
     try {
       const res = await fetch('/api/roadmaps');
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          setRoadmaps(data);
+          // If server has data, merge or use
+          setRoadmaps((prev) => (prev.length === 0 ? data : prev));
         }
       }
     } catch (e) {
-      // Offline fallback: keep local data
+      // Local mode
     }
   }, []);
 
@@ -112,32 +136,26 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       socket = new WebSocket(wsUrl);
       wsRef.current = socket;
 
-      socket.onopen = () => {
-        setWsConnected(true);
-      };
-
+      socket.onopen = () => setWsConnected(true);
       socket.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          if (message.event) {
-            // Refresh state from server
-            fetchFromServer();
+          if (message.event && message.data) {
+            // Live update from server/MCP
+            if (message.event === 'stage_updated' || message.event === 'stage_added' || message.event === 'roadmap_updated') {
+              fetchFromServer();
+            }
           }
-        } catch (err) {}
+        } catch {}
       };
-
       socket.onclose = () => {
         setWsConnected(false);
-        reconnectTimeout = setTimeout(connectWS, 2500);
+        reconnectTimeout = setTimeout(connectWS, 3000);
       };
-
-      socket.onerror = () => {
-        socket.close();
-      };
+      socket.onerror = () => socket.close();
     };
 
     connectWS();
-
     return () => {
       clearTimeout(reconnectTimeout);
       if (socket) socket.close();
@@ -203,14 +221,13 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!stage) return;
 
     setActiveStageId(stageId);
-
     const viewportW = window.innerWidth - 320;
     const viewportH = window.innerHeight - 80;
     const cardWidth = stage.width || 500;
     const cardHeight = 400;
 
-    const targetPanX = 320 + (viewportW / 2) - (stage.x + cardWidth / 2) * canvasState.zoom;
-    const targetPanY = 80 + (viewportH / 2) - (stage.y + cardHeight / 2) * canvasState.zoom;
+    const targetPanX = 320 + viewportW / 2 - (stage.x + cardWidth / 2) * canvasState.zoom;
+    const targetPanY = 80 + viewportH / 2 - (stage.y + cardHeight / 2) * canvasState.zoom;
 
     setCanvasState((prev) => ({
       ...prev,
@@ -221,11 +238,12 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   // Mutations
   const createRoadmap = async (title: string, description: string = '') => {
+    const authorName = currentUser?.name || 'Пользователь';
     try {
       const res = await fetch('/api/roadmaps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, description, author: 'Валера' }),
+        body: JSON.stringify({ title, description, author: authorName }),
       });
       if (res.ok) {
         const rm = await res.json();
@@ -233,17 +251,17 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setActiveRoadmapId(rm.id);
         return rm;
       }
-    } catch (e) {}
+    } catch {}
 
     // Fallback local
     const newRm: Roadmap = {
       id: `rm-${Date.now()}`,
       title,
       description,
-      author: 'Валера',
+      author: authorName,
       created: new Date().toISOString(),
       updated: new Date().toISOString(),
-      canvasState: { panX: 100, panY: 100, zoom: 1.0 },
+      canvasState: { panX: 180, panY: 80, zoom: 1.0 },
       stages: [],
       connections: [],
     };
@@ -255,7 +273,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const deleteRoadmap = async (id: string) => {
     try {
       await fetch(`/api/roadmaps/${id}`, { method: 'DELETE' });
-    } catch (e) {}
+    } catch {}
     setRoadmaps((prev) => {
       const filtered = prev.filter((r) => r.id !== id);
       if (activeRoadmapId === id && filtered.length > 0) {
@@ -279,9 +297,8 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         fetchFromServer();
         return stage;
       }
-    } catch (e) {}
+    } catch {}
 
-    // Local fallback
     const newStage: StageNode = {
       id: stageData.id || `stage-${Date.now()}`,
       roadmapId: activeRoadmap.id,
@@ -291,7 +308,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       status: stageData.status || 'planned',
       deadline: stageData.deadline || 'Без срока',
       priority: stageData.priority || 'medium',
-      x: stageData.x ?? 400,
+      x: stageData.x ?? 300,
       y: stageData.y ?? 200,
       width: stageData.width || 480,
       collapsed: false,
@@ -317,7 +334,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),
       });
-    } catch (e) {}
+    } catch {}
 
     setRoadmaps((prev) =>
       prev.map((r) => ({
@@ -330,7 +347,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const deleteStage = async (stageId: string) => {
     try {
       await fetch(`/api/stages/${stageId}`, { method: 'DELETE' });
-    } catch (e) {}
+    } catch {}
 
     setRoadmaps((prev) =>
       prev.map((r) => ({
@@ -349,7 +366,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         body: JSON.stringify({ title }),
       });
       fetchFromServer();
-    } catch (e) {}
+    } catch {}
   };
 
   const addSubtask = async (
@@ -365,7 +382,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         body: JSON.stringify({ groupId, title, priority }),
       });
       fetchFromServer();
-    } catch (e) {}
+    } catch {}
   };
 
   const toggleSubtask = async (stageId: string, taskId: string) => {
@@ -373,7 +390,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await fetch(`/api/stages/${stageId}/tasks/${taskId}/toggle`, {
         method: 'POST',
       });
-    } catch (e) {}
+    } catch {}
 
     setRoadmaps((prev) =>
       prev.map((r) => ({
@@ -403,7 +420,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await fetch(`/api/stages/${stageId}/tasks/${taskId}`, {
         method: 'DELETE',
       });
-    } catch (e) {}
+    } catch {}
 
     setRoadmaps((prev) =>
       prev.map((r) => ({
@@ -434,7 +451,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         fetchFromServer();
         return;
       }
-    } catch (e) {}
+    } catch {}
 
     const newConn: ConnectionLink = {
       id: `link-${Date.now()}`,
@@ -458,7 +475,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       await fetch(`/api/roadmaps/${activeRoadmap.id}/connections/${connId}`, {
         method: 'DELETE',
       });
-    } catch (e) {}
+    } catch {}
 
     setRoadmaps((prev) =>
       prev.map((r) =>
@@ -478,7 +495,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         body: JSON.stringify({ direction }),
       });
       fetchFromServer();
-    } catch (e) {}
+    } catch {}
   };
 
   const startConnecting = (fromStageId: string) => {
@@ -499,19 +516,71 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActiveTool('select');
   };
 
+  // Import JSON string
   const importRoadmapJSON = (jsonString: string): boolean => {
     try {
       const parsed = JSON.parse(jsonString);
-      if (parsed && parsed.id && parsed.title && Array.isArray(parsed.stages)) {
+      const itemsToImport: Roadmap[] = Array.isArray(parsed) ? parsed : [parsed];
+
+      let lastImportedId = '';
+      const validRoadmaps: Roadmap[] = [];
+
+      for (const item of itemsToImport) {
+        if (item && item.title) {
+          const rm: Roadmap = {
+            id: item.id || `rm-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            title: item.title,
+            description: item.description || '',
+            author: item.author || currentUser?.name || 'Пользователь',
+            created: item.created || new Date().toISOString(),
+            updated: new Date().toISOString(),
+            canvasState: item.canvasState || { panX: 180, panY: 80, zoom: 1.0 },
+            stages: Array.isArray(item.stages) ? item.stages : [],
+            connections: Array.isArray(item.connections) ? item.connections : [],
+          };
+          validRoadmaps.push(rm);
+          lastImportedId = rm.id;
+        }
+      }
+
+      if (validRoadmaps.length > 0) {
         setRoadmaps((prev) => {
-          const filtered = prev.filter((r) => r.id !== parsed.id);
-          return [...filtered, parsed];
+          const existingIds = new Set(validRoadmaps.map((v) => v.id));
+          const kept = prev.filter((r) => !existingIds.has(r.id));
+          return [...kept, ...validRoadmaps];
         });
-        setActiveRoadmapId(parsed.id);
+        setActiveRoadmapId(lastImportedId);
         return true;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Import error:', e);
+    }
     return false;
+  };
+
+  // Import .json file
+  const importRoadmapFile = async (file: File): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result;
+        if (typeof text === 'string') {
+          const success = importRoadmapJSON(text);
+          resolve(success);
+        } else {
+          resolve(false);
+        }
+      };
+      reader.onerror = () => resolve(false);
+      reader.readAsText(file);
+    });
+  };
+
+  // Optional: load sample Egg Incubator
+  const loadSampleTemplate = () => {
+    setRoadmaps(INITIAL_ROADMAPS);
+    setActiveRoadmapId('egg-incubator');
+    confetti({ particleCount: 50 });
   };
 
   return (
@@ -555,6 +624,8 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         cancelConnecting,
         completeConnecting,
         importRoadmapJSON,
+        importRoadmapFile,
+        loadSampleTemplate,
       }}
     >
       {children}

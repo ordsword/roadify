@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { AuthProvider } from './context/AuthContext';
 import { RoadmapProvider } from './context/RoadmapContext';
 import { Header } from './components/Header/Header';
 import { Sidebar } from './components/Sidebar/Sidebar';
@@ -8,6 +9,7 @@ import { MCPGuideModal } from './components/Modals/MCPGuideModal';
 import { NewStageModal } from './components/Modals/NewStageModal';
 import { NewRoadmapModal } from './components/Modals/NewRoadmapModal';
 import { SettingsModal } from './components/Modals/SettingsModal';
+import { AuthModal } from './components/Modals/AuthModal';
 
 export const AppContent: React.FC = () => {
   const [isExportOpen, setIsExportOpen] = useState(false);
@@ -30,10 +32,14 @@ export const AppContent: React.FC = () => {
         <Sidebar
           onOpenNewRoadmap={() => setIsNewRoadmapOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenExport={() => setIsExportOpen(true)}
         />
 
         {/* Infinite Canvas */}
-        <InfiniteCanvas onOpenNewStage={() => setIsNewStageOpen(true)} />
+        <InfiniteCanvas
+          onOpenNewStage={() => setIsNewStageOpen(true)}
+          onOpenNewRoadmap={() => setIsNewRoadmapOpen(true)}
+        />
       </div>
 
       {/* Modals */}
@@ -57,14 +63,17 @@ export const AppContent: React.FC = () => {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
       />
+      <AuthModal />
     </div>
   );
 };
 
 export default function App() {
   return (
-    <RoadmapProvider>
-      <AppContent />
-    </RoadmapProvider>
+    <AuthProvider>
+      <RoadmapProvider>
+        <AppContent />
+      </RoadmapProvider>
+    </AuthProvider>
   );
 }

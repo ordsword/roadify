@@ -16,12 +16,14 @@
     "start": "tsx server/index.ts",
     "app": "electron .",
     "app:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
-    "dist": "npm run build && electron-builder --win --dir",
+    "dist": "npm run build && electron-builder --win nsis",
+    "dist:installer": "npm run build && electron-builder --win nsis",
     "dist:portable": "npm run build && electron-builder --win portable"
   },
   "build": {
     "appId": "com.roadify.desktop",
     "productName": "Roadify",
+    "artifactName": "Roadify-Setup-${version}.${ext}",
     "directories": {
       "output": "release"
     },
@@ -35,9 +37,17 @@
     ],
     "win": {
       "target": [
-        "portable",
-        "dir"
+        "nsis"
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Roadify",
+      "runAfterFinish": true
     }
   },
   "keywords": [

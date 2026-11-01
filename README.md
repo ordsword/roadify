@@ -17,10 +17,12 @@
 
 ## 📥 Скачать приложение для Windows
 
-Вы можете скачать готовое скомпилированное настольное приложение со страницы релизов:
+Вы можете скачать официальный мастер установки или портативную версию:
 
-👉 **[Скачать Roadify 1.1.0 Portable (Windows .exe)](https://github.com/ordsword/roadify/releases/download/v1.1.0/Roadify-1.1.0.exe)**  
-*(Приложение работает без установки: скачайте и запустите!)*
+- 💿 **[Скачать Roadify Setup 1.1.0 (Windows Installer .exe)](https://github.com/ordsword/roadify/releases/download/v1.1.0/Roadify-Setup-1.1.0.exe)**  
+  *(Настоящий установщик: мастер установки, выбор пути, полоса прогресса, ярлык на Рабочем столе и чистое удаление)*
+- 🚀 **[Скачать Roadify 1.1.0 Portable (.exe без установки)](https://github.com/ordsword/roadify/releases/download/v1.1.0/Roadify-1.1.0.exe)**
+- 🗜️ **[Скачать Roadify 1.1.0 Zip (Архив для распаковки)](https://github.com/ordsword/roadify/releases/download/v1.1.0/Roadify-v1.1.0-win-x64.zip)**
 
 ---
 

@@ -1,6 +1,6 @@
 {
   "name": "roadify",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "Roadify — The visual roadmap, infinite canvas sprint board & dependency tracking desktop application with built-in MCP server for AI agents.",
   "type": "module",
   "main": "electron/main.cjs",
@@ -9,7 +9,8 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build:server": "esbuild server/index.ts --bundle --platform=node --target=node20 --outfile=dist-server/server.cjs",
+    "build": "tsc && vite build && npm run build:server",
     "preview": "vite preview",
     "server": "tsx server/index.ts",
     "mcp": "tsx server/mcp-server.ts",
@@ -29,6 +30,7 @@
     },
     "files": [
       "dist/**/*",
+      "dist-server/**/*",
       "server/**/*",
       "electron/**/*",
       "data/**/*",

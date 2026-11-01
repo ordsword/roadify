@@ -1,34 +1,68 @@
 const { app, BrowserWindow, Menu, shell, dialog, ipcMain } = require('electron');
 const path = require('path');
 const http = require('http');
+const fs = require('fs');
 
 let mainWindow = null;
-let serverProcess = null;
 
 // Ensure server is running or start it
-function ensureServer() {
+function checkServer(port = 3001) {
   return new Promise((resolve) => {
-    // Check if server is already responding on port 3001
-    const req = http.get('http://localhost:3001/api/roadmaps', (res) => {
-      resolve();
+    const req = http.get(`http://localhost:${port}/api/roadmaps`, (res) => {
+      resolve(res.statusCode === 200 || res.statusCode === 304);
     });
-
-    req.on('error', () => {
-      // Start server in-process or via fork
-      try {
-        require('../server/index.ts');
-        setTimeout(resolve, 1000);
-      } catch (err) {
-        console.log('Starting standalone server:', err.message);
-        setTimeout(resolve, 1500);
-      }
-    });
-
-    req.setTimeout(500, () => {
+    req.on('error', () => resolve(false));
+    req.setTimeout(400, () => {
       req.destroy();
-      resolve();
+      resolve(false);
     });
   });
+}
+
+async function ensureServer() {
+  const isRunning = await checkServer(3001);
+  if (isRunning) {
+    console.log('[Roadify] Core server already running on port 3001');
+    return true;
+  }
+
+  // Set persistent writable user data path
+  try {
+    const userDataPath = app.getPath('userData');
+    process.env.ROADIFY_DATA_DIR = path.join(userDataPath, 'data');
+    process.env.ROADIFY_DIST_DIR = path.join(__dirname, '..', 'dist');
+    if (!fs.existsSync(process.env.ROADIFY_DATA_DIR)) {
+      fs.mkdirSync(process.env.ROADIFY_DATA_DIR, { recursive: true });
+    }
+  } catch (e) {
+    console.error('[Roadify] Error setting user data dir:', e);
+  }
+
+  // Start the bundled server
+  const serverPath = path.join(__dirname, '..', 'dist-server', 'server.cjs');
+  if (fs.existsSync(serverPath)) {
+    try {
+      require(serverPath);
+      console.log('[Roadify] Started embedded core server from:', serverPath);
+    } catch (err) {
+      console.error('[Roadify] Error requiring server bundle:', err);
+    }
+  } else {
+    console.warn('[Roadify] dist-server/server.cjs not found at:', serverPath);
+  }
+
+  // Poll until server responds (up to 3 seconds)
+  for (let i = 0; i < 30; i++) {
+    const ok = await checkServer(3001);
+    if (ok) {
+      console.log(`[Roadify] Server is ready on port 3001 after ${(i + 1) * 100}ms`);
+      return true;
+    }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+
+  console.warn('[Roadify] Server did not respond within timeout, will fallback to file://');
+  return false;
 }
 
 function createWindow() {
@@ -43,17 +77,17 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true,
+      webSecurity: false, // Allow local file loading and cross-origin if fallback used
     },
   });
 
-  // Load from local dist or dev server
   const isDev = process.env.NODE_ENV === 'development';
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173');
   } else {
-    // In production, load from the local server or local file
-    mainWindow.loadURL('http://localhost:3001').catch(() => {
+    // In production, try loading from local server first, fallback to dist/index.html
+    mainWindow.loadURL('http://localhost:3001').catch((err) => {
+      console.log('[Roadify] loadURL failed, loading local file:', err);
       mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
     });
   }
@@ -61,6 +95,14 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
     mainWindow.focus();
+  });
+
+  mainWindow.webContents.on('did-fail-load', (e, code, desc) => {
+    console.warn('[Roadify] Failed to load URL, falling back to local file. Code:', code, desc);
+    const localIndex = path.join(__dirname, '..', 'dist', 'index.html');
+    if (fs.existsSync(localIndex)) {
+      mainWindow.loadFile(localIndex);
+    }
   });
 
   // Handle external links
@@ -124,7 +166,7 @@ function createWindow() {
             dialog.showMessageBox(mainWindow, {
               type: 'info',
               title: 'О Roadify',
-              message: 'Roadify Desktop v1.1.0',
+              message: 'Roadify Desktop v1.1.1',
               detail: 'Платформа визуальных дорожных карт на бесконечном холсте с встроенным сервером MCP для ИИ-ассистентов.\n\nАвтор: OrdSword',
             });
           },

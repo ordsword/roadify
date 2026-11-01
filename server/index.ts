@@ -3,13 +3,11 @@ import http from 'http';
 import { WebSocketServer, WebSocket } from 'ws';
 import cors from 'cors';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { store, subscribeToStore } from './store.js';
 import { createMCPServer } from './mcp-server.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
 
 const app = express();
 const server = http.createServer(app);
@@ -216,7 +214,7 @@ app.post('/messages', async (req, res) => {
 });
 
 // Serve frontend build if exists
-const distPath = path.join(__dirname, '..', 'dist');
+const distPath = process.env.ROADIFY_DIST_DIR || path.join(currentDir, '..', 'dist');
 app.use(express.static(distPath));
 app.get('*', (req, res) => {
   const indexPath = path.join(distPath, 'index.html');

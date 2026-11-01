@@ -1,12 +1,10 @@
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { Roadmap, StageNode, TaskGroup, TaskItem, ConnectionLink } from '../src/types';
 import { INITIAL_ROADMAPS } from '../src/presets/initialData';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, '..', 'data');
+const currentDir = typeof __dirname !== 'undefined' ? __dirname : process.cwd();
+const DATA_DIR = process.env.ROADIFY_DATA_DIR || path.join(currentDir, '..', 'data');
 const DATA_FILE = path.join(DATA_DIR, 'roadmaps.json');
 
 // Real-time subscribers

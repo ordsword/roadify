@@ -8,6 +8,7 @@ pnpm-debug.log*
 
 # Build
 dist/
+dist-server/
 dist-ssr/
 release/
 *.local

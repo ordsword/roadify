@@ -642,7 +642,8 @@ export function createMCPServer() {
         }
 
         case 'export_markdown_report': {
-          const md = store.exportMarkdown(String(args.roadmapId));
+          const rmId = args.roadmapId ? String(args.roadmapId) : store.getAllRoadmaps()[0]?.id;
+          const md = rmId ? store.exportMarkdown(rmId) : '# Нет доступных дорожных карт';
           return {
             content: [
               {
@@ -673,7 +674,16 @@ export function createMCPServer() {
 }
 
 // If run directly via CLI (stdio transport)
-if (process.argv[1] && process.argv[1].endsWith('mcp-server.ts') || process.argv[1]?.endsWith('roadify-mcp.js')) {
+if (
+  (typeof process !== 'undefined' && process.argv[1] && (
+    process.argv[1].includes('mcp') ||
+    process.argv[1].includes('roadify') ||
+    process.argv[1].endsWith('.js') ||
+    process.argv[1].endsWith('.cjs') ||
+    process.argv[1].endsWith('.ts')
+  )) ||
+  process.env.MCP_TRANSPORT === 'stdio'
+) {
   const server = createMCPServer();
   const transport = new StdioServerTransport();
   server.connect(transport).catch((err) => {

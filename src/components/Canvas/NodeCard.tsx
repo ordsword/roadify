@@ -38,6 +38,7 @@ export const NodeCard: React.FC<NodeCardProps> = ({
     completeConnecting,
     isConnecting,
     connectingFromId,
+    activeTool,
   } = useRoadmap();
 
   const [collapsed, setCollapsed] = useState(stage.collapsed || false);
@@ -81,6 +82,15 @@ export const NodeCard: React.FC<NodeCardProps> = ({
     setIsEditingTitle(false);
   };
 
+  const handleAnchorClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isConnecting && connectingFromId && connectingFromId !== stage.id) {
+      completeConnecting(stage.id);
+    } else {
+      startConnecting(stage.id);
+    }
+  };
+
   return (
     <div
       style={{
@@ -92,52 +102,70 @@ export const NodeCard: React.FC<NodeCardProps> = ({
         onSelect();
         if (isConnecting && connectingFromId && connectingFromId !== stage.id) {
           completeConnecting(stage.id);
+        } else if (activeTool === 'connect') {
+          if (!isConnecting) {
+            startConnecting(stage.id);
+          } else if (connectingFromId !== stage.id) {
+            completeConnecting(stage.id);
+          }
         }
       }}
-      className={`absolute group rounded-xl border bg-[#131622]/95 backdrop-blur-md shadow-2xl transition-shadow select-none ${
-        isSelected
+      className={`absolute group rounded-xl border bg-[#131622]/95 backdrop-blur-md shadow-2xl transition-all select-none ${
+        isConnecting && connectingFromId === stage.id
+          ? 'border-indigo-400 ring-2 ring-indigo-400/50 shadow-indigo-500/20'
+          : isConnecting && connectingFromId !== stage.id
+          ? 'border-emerald-400 ring-2 ring-emerald-400/50 hover:border-emerald-300 cursor-pointer shadow-emerald-500/20'
+          : isSelected
           ? 'border-indigo-500 ring-2 ring-indigo-500/20 shadow-indigo-500/10'
           : 'border-[#232740] hover:border-[#343b60]'
       }`}
     >
+      {/* Target indicator while connecting */}
+      {isConnecting && connectingFromId !== stage.id && (
+        <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-emerald-600 text-white rounded-full text-[10px] font-bold shadow-lg pointer-events-none whitespace-nowrap z-30 animate-bounce">
+          Кликните сюда, чтобы провести стрелку
+        </div>
+      )}
+      {isConnecting && connectingFromId === stage.id && (
+        <div className="absolute -top-7 left-1/2 -translate-x-1/2 px-2.5 py-0.5 bg-indigo-600 text-white rounded-full text-[10px] font-bold shadow-lg pointer-events-none whitespace-nowrap z-30">
+          Источник связи (выберите цель)
+        </div>
+      )}
+
       {/* Connection Anchor Handles */}
       <div
-        onClick={(e) => {
-          e.stopPropagation();
-          startConnecting(stage.id);
-        }}
-        title="Протянуть связь к другому этапу"
-        className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-[#1e233d] border-2 border-indigo-400 opacity-0 group-hover:opacity-100 cursor-crosshair hover:scale-125 transition-all z-20 flex items-center justify-center"
+        onClick={handleAnchorClick}
+        title={isConnecting ? 'Соединить с этим этапом' : 'Протянуть связь к другому этапу'}
+        className={`absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-[#1e233d] border-2 border-indigo-400 cursor-crosshair hover:scale-125 transition-all z-20 flex items-center justify-center ${
+          isConnecting || activeTool === 'connect' ? 'opacity-100 ring-2 ring-emerald-400' : 'opacity-0 group-hover:opacity-100'
+        }`}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-300"></span>
       </div>
       <div
-        onClick={(e) => {
-          e.stopPropagation();
-          startConnecting(stage.id);
-        }}
-        title="Протянуть связь к другому этапу"
-        className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-[#1e233d] border-2 border-indigo-400 opacity-0 group-hover:opacity-100 cursor-crosshair hover:scale-125 transition-all z-20 flex items-center justify-center"
+        onClick={handleAnchorClick}
+        title={isConnecting ? 'Соединить с этим этапом' : 'Протянуть связь к другому этапу'}
+        className={`absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 rounded-full bg-[#1e233d] border-2 border-indigo-400 cursor-crosshair hover:scale-125 transition-all z-20 flex items-center justify-center ${
+          isConnecting || activeTool === 'connect' ? 'opacity-100 ring-2 ring-emerald-400' : 'opacity-0 group-hover:opacity-100'
+        }`}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-300"></span>
       </div>
       <div
-        onClick={(e) => {
-          e.stopPropagation();
-          startConnecting(stage.id);
-        }}
-        title="Протянуть связь к другому этапу"
-        className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#1e233d] border-2 border-indigo-400 opacity-0 group-hover:opacity-100 cursor-crosshair hover:scale-125 transition-all z-20 flex items-center justify-center"
+        onClick={handleAnchorClick}
+        title={isConnecting ? 'Соединить с этим этапом' : 'Протянуть связь к другому этапу'}
+        className={`absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#1e233d] border-2 border-indigo-400 cursor-crosshair hover:scale-125 transition-all z-20 flex items-center justify-center ${
+          isConnecting || activeTool === 'connect' ? 'opacity-100 ring-2 ring-emerald-400' : 'opacity-0 group-hover:opacity-100'
+        }`}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-300"></span>
       </div>
       <div
-        onClick={(e) => {
-          e.stopPropagation();
-          startConnecting(stage.id);
-        }}
-        title="Протянуть связь к другому этапу"
-        className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#1e233d] border-2 border-indigo-400 opacity-0 group-hover:opacity-100 cursor-crosshair hover:scale-125 transition-all z-20 flex items-center justify-center"
+        onClick={handleAnchorClick}
+        title={isConnecting ? 'Соединить с этим этапом' : 'Протянуть связь к другому этапу'}
+        className={`absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 rounded-full bg-[#1e233d] border-2 border-indigo-400 cursor-crosshair hover:scale-125 transition-all z-20 flex items-center justify-center ${
+          isConnecting || activeTool === 'connect' ? 'opacity-100 ring-2 ring-emerald-400' : 'opacity-0 group-hover:opacity-100'
+        }`}
       >
         <span className="w-1.5 h-1.5 rounded-full bg-indigo-300"></span>
       </div>

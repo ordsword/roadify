@@ -4,6 +4,7 @@ import { useRoadmap } from '../../context/RoadmapContext';
 import { useAuth } from '../../context/AuthContext';
 import { NodeCard } from './NodeCard';
 import { ConnectionLine } from './ConnectionLine';
+import { CanvasTextNote } from './CanvasTextNote';
 import { Toolbar } from './Toolbar';
 import { ZoomControls } from './ZoomControls';
 import { Minimap } from './Minimap';
@@ -26,8 +27,11 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
     canvasState,
     setPanZoom,
     activeTool,
+    setActiveTool,
     updateStage,
     deleteStage,
+    addTextNote,
+    updateTextNote,
     isConnecting,
     connectingFromId,
     cancelConnecting,
@@ -47,11 +51,16 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   const [draggingStageId, setDraggingStageId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
+  // Text Note Dragging State
+  const [draggingNoteId, setDraggingNoteId] = useState<string | null>(null);
+  const [dragNoteOffset, setDragNoteOffset] = useState({ x: 0, y: 0 });
+
   // Connect Dragging line state (mouse world pos)
   const [mouseWorldPos, setMouseWorldPos] = useState({ x: 0, y: 0 });
 
   const stages = activeRoadmap?.stages || [];
   const connections = activeRoadmap?.connections || [];
+  const textNotes = activeRoadmap?.textNotes || [];
 
   // Convert screen coordinates to canvas world coordinates
   const screenToWorld = useCallback(
@@ -85,12 +94,23 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
 
   // Canvas Mouse Down
   const handleMouseDown = (e: React.MouseEvent) => {
+    // If text tool active, click places a text note!
+    if (activeTool === 'text') {
+      const world = screenToWorld(e.clientX, e.clientY);
+      addTextNote(Math.round(world.x), Math.round(world.y), 'Новая заметка');
+      setActiveTool('select');
+      return;
+    }
+
     if (
       e.button === 1 ||
       activeTool === 'hand' ||
       e.target === containerRef.current ||
       (e.target as HTMLElement).tagName === 'svg'
     ) {
+      if (isConnecting) {
+        cancelConnecting();
+      }
       setIsPanning(true);
       setStartPan({ x: e.clientX - canvasState.panX, y: e.clientY - canvasState.panY });
       setActiveStageId(null);
@@ -111,6 +131,13 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
         const newY = Math.round(world.y - dragOffset.y);
         updateStage(draggingStageId, { x: newX, y: newY });
       }
+    } else if (draggingNoteId) {
+      const note = textNotes.find((n) => n.id === draggingNoteId);
+      if (note) {
+        const newX = Math.round(world.x - dragNoteOffset.x);
+        const newY = Math.round(world.y - dragNoteOffset.y);
+        updateTextNote(draggingNoteId, { x: newX, y: newY });
+      }
     }
   };
 
@@ -118,6 +145,7 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
   const handleMouseUp = () => {
     setIsPanning(false);
     setDraggingStageId(null);
+    setDraggingNoteId(null);
   };
 
   // Start Node Drag
@@ -133,6 +161,20 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
     setDragOffset({
       x: world.x - stage.x,
       y: world.y - stage.y,
+    });
+  };
+
+  // Start Text Note Drag
+  const handleNoteDragStart = (noteId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const note = textNotes.find((n) => n.id === noteId);
+    if (!note) return;
+
+    setDraggingNoteId(noteId);
+    const world = screenToWorld(e.clientX, e.clientY);
+    setDragNoteOffset({
+      x: world.x - note.x,
+      y: world.y - note.y,
     });
   };
 
@@ -199,7 +241,13 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       className={`relative flex-1 h-[calc(100vh-3rem)] overflow-hidden bg-[#0c0e17] canvas-grid-dots select-none ${
-        activeTool === 'hand' || isPanning ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'
+        activeTool === 'hand' || isPanning
+          ? 'cursor-grab active:cursor-grabbing'
+          : activeTool === 'text'
+          ? 'cursor-text'
+          : activeTool === 'connect' || isConnecting
+          ? 'cursor-crosshair'
+          : 'cursor-default'
       }`}
     >
       <input
@@ -348,6 +396,17 @@ export const InfiniteCanvas: React.FC<InfiniteCanvasProps> = ({
             />
           )}
         </svg>
+
+        {/* Canvas Text Notes Layer */}
+        <div className="absolute inset-0 pointer-events-auto">
+          {textNotes.map((note) => (
+            <CanvasTextNote
+              key={note.id}
+              note={note}
+              onDragStart={(e) => handleNoteDragStart(note.id, e)}
+            />
+          ))}
+        </div>
 
         {/* Nodes Layer */}
         <div className="absolute inset-0 pointer-events-auto">

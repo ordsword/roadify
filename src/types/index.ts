@@ -56,6 +56,16 @@ export interface CanvasState {
   zoom: number;
 }
 
+export interface TextNote {
+  id: string;
+  roadmapId: string;
+  x: number;
+  y: number;
+  text: string;
+  color?: string;
+  fontSize?: number;
+}
+
 export interface Roadmap {
   id: string;
   userId?: string;
@@ -66,6 +76,7 @@ export interface Roadmap {
   updated: string;
   stages: StageNode[];
   connections: ConnectionLink[];
+  textNotes?: TextNote[];
   canvasState?: CanvasState;
 }
 

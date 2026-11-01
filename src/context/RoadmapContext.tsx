@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import confetti from 'canvas-confetti';
-import { Roadmap, StageNode, ConnectionLink, CanvasTool, FilterTab, PriorityLevel } from '../types';
+import { Roadmap, StageNode, ConnectionLink, CanvasTool, FilterTab, PriorityLevel, TextNote, TaskGroup, TaskItem } from '../types';
 import { INITIAL_ROADMAPS } from '../presets/initialData';
 import { useAuth } from './AuthContext';
 
@@ -42,6 +42,9 @@ interface RoadmapContextType {
   deleteSubtask: (stageId: string, taskId: string) => Promise<void>;
   createConnection: (fromId: string, toId: string, label?: string) => Promise<void>;
   deleteConnection: (connId: string) => Promise<void>;
+  addTextNote: (x: number, y: number, text?: string) => TextNote | null;
+  updateTextNote: (noteId: string, updates: Partial<TextNote>) => void;
+  deleteTextNote: (noteId: string) => void;
   autoLayout: (direction?: 'horizontal' | 'vertical') => Promise<void>;
   startConnecting: (fromStageId: string) => void;
   cancelConnecting: () => void;
@@ -56,7 +59,7 @@ const RoadmapContext = createContext<RoadmapContextType | undefined>(undefined);
 export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
 
-  // Load from local storage, start clean/empty if first time
+  // Load from local storage, start with a clean starter project if first time
   const [roadmaps, setRoadmaps] = useState<Roadmap[]>(() => {
     try {
       const saved = localStorage.getItem('roadify_roadmaps');
@@ -65,11 +68,33 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch {}
-    return []; // Clean empty slate!
+    const defaultProject: Roadmap = {
+      id: 'rm-main',
+      title: 'Мой проект',
+      description: 'Основная дорожная карта и планирование спринтов',
+      author: 'Пользователь',
+      created: new Date().toISOString(),
+      updated: new Date().toISOString(),
+      canvasState: { panX: 180, panY: 80, zoom: 1.0 },
+      stages: [],
+      connections: [],
+      textNotes: [
+        {
+          id: 'note-welcome',
+          roadmapId: 'rm-main',
+          x: 260,
+          y: 40,
+          text: 'Мой проект — дорожная карта спринта',
+          color: '#facc15',
+          fontSize: 18,
+        },
+      ],
+    };
+    return [defaultProject];
   });
 
   const [activeRoadmapId, setActiveRoadmapId] = useState<string>(() => {
-    return localStorage.getItem('roadify_active_id') || '';
+    return localStorage.getItem('roadify_active_id') || 'rm-main';
   });
 
   const [activeStageId, setActiveStageId] = useState<string | null>(null);
@@ -112,8 +137,7 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data) && data.length > 0) {
-          // If server has data, merge or use
-          setRoadmaps((prev) => (prev.length === 0 ? data : prev));
+          setRoadmaps(data);
         }
       }
     } catch (e) {
@@ -285,45 +309,54 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const addStage = async (stageData: Partial<StageNode>) => {
-    if (!activeRoadmap) return null;
-    try {
-      const res = await fetch(`/api/roadmaps/${activeRoadmap.id}/stages`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(stageData),
-      });
-      if (res.ok) {
-        const stage = await res.json();
-        fetchFromServer();
-        return stage;
-      }
-    } catch {}
+    let targetRm = activeRoadmap;
+    if (!targetRm) {
+      targetRm = await createRoadmap('Мой проект', 'Основная дорожная карта');
+      if (!targetRm) return null;
+    }
 
     const newStage: StageNode = {
-      id: stageData.id || `stage-${Date.now()}`,
-      roadmapId: activeRoadmap.id,
+      id: stageData.id || `stage-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      roadmapId: targetRm.id,
       title: stageData.title || 'Новый этап',
       tag: stageData.tag || 'ЭТАП',
       description: stageData.description || '',
       status: stageData.status || 'planned',
       deadline: stageData.deadline || 'Без срока',
       priority: stageData.priority || 'medium',
-      x: stageData.x ?? 300,
-      y: stageData.y ?? 200,
-      width: stageData.width || 480,
+      x: stageData.x ?? (targetRm.stages.length > 0 ? targetRm.stages[targetRm.stages.length - 1].x + 550 : 260),
+      y: stageData.y ?? 140,
+      width: stageData.width || 520,
       collapsed: false,
-      taskGroups: stageData.taskGroups || [
-        { id: `grp-${Date.now()}`, title: 'Подзадачи', tasks: [] },
-      ],
+      taskGroups: stageData.taskGroups && stageData.taskGroups.length > 0
+        ? stageData.taskGroups
+        : [
+            {
+              id: `grp-${Date.now()}`,
+              title: 'Задачи этапа',
+              tasks: [],
+            },
+          ],
     };
 
+    // Optimistically update React state immediately!
     setRoadmaps((prev) =>
       prev.map((r) =>
-        r.id === activeRoadmap.id
+        r.id === targetRm!.id
           ? { ...r, stages: [...r.stages, newStage], updated: new Date().toISOString() }
           : r
       )
     );
+
+    // Persist to server in background
+    try {
+      await fetch(`/api/roadmaps/${targetRm.id}/stages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newStage),
+      });
+    } catch {}
+
     return newStage;
   };
 
@@ -359,13 +392,36 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   const addTaskGroup = async (stageId: string, title: string) => {
+    if (!activeRoadmap) return;
+    const newGroup: TaskGroup = {
+      id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: title || 'Новая группа',
+      collapsed: false,
+      tasks: [],
+    };
+
+    setRoadmaps((prev) =>
+      prev.map((r) =>
+        r.id === activeRoadmap.id
+          ? {
+              ...r,
+              stages: r.stages.map((s) =>
+                s.id === stageId
+                  ? { ...s, taskGroups: [...(s.taskGroups || []), newGroup] }
+                  : s
+              ),
+              updated: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+
     try {
       await fetch(`/api/stages/${stageId}/groups`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title }),
       });
-      fetchFromServer();
     } catch {}
   };
 
@@ -375,13 +431,50 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
     title: string,
     priority: PriorityLevel = 'normal'
   ) => {
+    if (!activeRoadmap || !title.trim()) return;
+    const newTask: TaskItem = {
+      id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: title.trim(),
+      completed: false,
+      priority,
+    };
+
+    setRoadmaps((prev) =>
+      prev.map((r) =>
+        r.id === activeRoadmap.id
+          ? {
+              ...r,
+              stages: r.stages.map((s) => {
+                if (s.id !== stageId) return s;
+                let targetGroupFound = false;
+                const updatedGroups = (s.taskGroups || []).map((g) => {
+                  if (groupId ? g.id === groupId : !targetGroupFound) {
+                    targetGroupFound = true;
+                    return { ...g, tasks: [...g.tasks, newTask] };
+                  }
+                  return g;
+                });
+                if (!targetGroupFound) {
+                  updatedGroups.push({
+                    id: `grp-${Date.now()}`,
+                    title: 'Задачи этапа',
+                    tasks: [newTask],
+                  });
+                }
+                return { ...s, taskGroups: updatedGroups };
+              }),
+              updated: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+
     try {
       await fetch(`/api/stages/${stageId}/tasks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ groupId, title, priority }),
       });
-      fetchFromServer();
     } catch {}
   };
 
@@ -441,46 +534,116 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const createConnection = async (fromId: string, toId: string, label?: string) => {
     if (!activeRoadmap || fromId === toId) return;
-    try {
-      const res = await fetch(`/api/roadmaps/${activeRoadmap.id}/connections`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromStageId: fromId, toStageId: toId, label }),
-      });
-      if (res.ok) {
-        fetchFromServer();
-        return;
-      }
-    } catch {}
+
+    const currentConns = activeRoadmap.connections || [];
+    if (currentConns.some((c) => c.fromStageId === fromId && c.toStageId === toId)) {
+      return;
+    }
 
     const newConn: ConnectionLink = {
-      id: `link-${Date.now()}`,
+      id: `link-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       fromStageId: fromId,
       toStageId: toId,
       label: label || '',
-      color: '#6366f1',
+      color: '#ffffff',
       style: 'curved',
     };
 
     setRoadmaps((prev) =>
       prev.map((r) =>
-        r.id === activeRoadmap.id ? { ...r, connections: [...r.connections, newConn] } : r
+        r.id === activeRoadmap.id
+          ? {
+              ...r,
+              connections: [...(r.connections || []), newConn],
+              updated: new Date().toISOString(),
+            }
+          : r
       )
     );
+
+    try {
+      await fetch(`/api/roadmaps/${activeRoadmap.id}/connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newConn),
+      });
+    } catch {}
   };
 
   const deleteConnection = async (connId: string) => {
     if (!activeRoadmap) return;
+    setRoadmaps((prev) =>
+      prev.map((r) =>
+        r.id === activeRoadmap.id
+          ? {
+              ...r,
+              connections: (r.connections || []).filter((c) => c.id !== connId),
+              updated: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+
     try {
       await fetch(`/api/roadmaps/${activeRoadmap.id}/connections/${connId}`, {
         method: 'DELETE',
       });
     } catch {}
+  };
+
+  const addTextNote = (x: number, y: number, text: string = 'Новая надпись'): TextNote | null => {
+    if (!activeRoadmap) return null;
+    const newNote: TextNote = {
+      id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      roadmapId: activeRoadmap.id,
+      x,
+      y,
+      text,
+      color: '#facc15',
+      fontSize: 16,
+    };
 
     setRoadmaps((prev) =>
       prev.map((r) =>
         r.id === activeRoadmap.id
-          ? { ...r, connections: r.connections.filter((c) => c.id !== connId) }
+          ? {
+              ...r,
+              textNotes: [...(r.textNotes || []), newNote],
+              updated: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+    return newNote;
+  };
+
+  const updateTextNote = (noteId: string, updates: Partial<TextNote>) => {
+    if (!activeRoadmap) return;
+    setRoadmaps((prev) =>
+      prev.map((r) =>
+        r.id === activeRoadmap.id
+          ? {
+              ...r,
+              textNotes: (r.textNotes || []).map((n) =>
+                n.id === noteId ? { ...n, ...updates } : n
+              ),
+              updated: new Date().toISOString(),
+            }
+          : r
+      )
+    );
+  };
+
+  const deleteTextNote = (noteId: string) => {
+    if (!activeRoadmap) return;
+    setRoadmaps((prev) =>
+      prev.map((r) =>
+        r.id === activeRoadmap.id
+          ? {
+              ...r,
+              textNotes: (r.textNotes || []).filter((n) => n.id !== noteId),
+              updated: new Date().toISOString(),
+            }
           : r
       )
     );
@@ -619,6 +782,9 @@ export const RoadmapProvider: React.FC<{ children: React.ReactNode }> = ({ child
         deleteSubtask,
         createConnection,
         deleteConnection,
+        addTextNote,
+        updateTextNote,
+        deleteTextNote,
         autoLayout,
         startConnecting,
         cancelConnecting,

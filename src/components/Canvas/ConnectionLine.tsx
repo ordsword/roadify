@@ -65,7 +65,7 @@ export const ConnectionLine: React.FC<ConnectionLineProps> = ({
   const midX = (startX + endX) / 2;
   const midY = (startY + endY) / 2;
 
-  const color = connection.color || '#6366f1';
+  const color = connection.color || '#e2e8f0';
 
   return (
     <g

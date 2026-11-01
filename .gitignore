@@ -9,6 +9,7 @@ pnpm-debug.log*
 # Build
 dist/
 dist-ssr/
+release/
 *.local
 
 # Environment

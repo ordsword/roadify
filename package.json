@@ -1,12 +1,12 @@
 {
   "name": "roadify",
-  "version": "1.0.0",
-  "description": "Roadify — The visual roadmap, infinite canvas sprint board & dependency tracking platform with built-in MCP server for AI agents.",
+  "version": "1.1.0",
+  "description": "Roadify — The visual roadmap, infinite canvas sprint board & dependency tracking desktop application with built-in MCP server for AI agents.",
   "type": "module",
+  "main": "electron/main.cjs",
   "bin": {
     "roadify-mcp": "./bin/roadify-mcp.js"
   },
-  "main": "./server/index.ts",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -14,11 +14,37 @@
     "server": "tsx server/index.ts",
     "mcp": "tsx server/mcp-server.ts",
     "start": "tsx server/index.ts",
-    "full": "tsx server/index.ts"
+    "app": "electron .",
+    "app:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && electron .\"",
+    "dist": "npm run build && electron-builder --win --dir",
+    "dist:portable": "npm run build && electron-builder --win portable"
+  },
+  "build": {
+    "appId": "com.roadify.desktop",
+    "productName": "Roadify",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "server/**/*",
+      "electron/**/*",
+      "data/**/*",
+      "bin/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable",
+        "dir"
+      ]
+    }
   },
   "keywords": [
     "roadmap",
     "sprint-board",
+    "desktop-app",
+    "electron",
     "mcp",
     "model-context-protocol",
     "infinite-canvas",
@@ -54,10 +80,14 @@
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^4.3.3",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
+    "electron": "^34.3.0",
+    "electron-builder": "^25.1.8",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.14",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
-    "vite": "^5.4.10"
+    "vite": "^5.4.10",
+    "wait-on": "^8.0.3"
   }
 }
